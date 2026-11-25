@@ -1,0 +1,5 @@
+legendcheats-bot.zip
+*.zip
+__pycache__/
+*.pyc
+.env
