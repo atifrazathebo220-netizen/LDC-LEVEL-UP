@@ -1,15 +1,22 @@
 """
-LEGENDCHEATS — Telegram Bot
-----------------------------
-Ek saaf bot jo:
-  - /start   -> LEGENDCHEATS branding + welcome
-  - /number  -> phone number leta hai aur validate karta hai
-  - number format check: no leading 0, valid country code, 10-15 digits
-  - ek LEGIT public API (phone metadata) se info laa kar dikhata hai
+LEGENDCHEATS — Telegram Number Lookup Bot
+------------------------------------------
+Read-only number testing. Kisi number par koi SMS / call / WhatsApp message
+NAHI bheja jaata — sirf lookup (database se info) hoti hai.
+
+Commands:
+  /start   -> LEGENDCHEATS branding + welcome
+  /help    -> madad
+  /number  -> number validate + lookup (active, carrier, country, line type)
+
+Lookup sources (optional, jo key aapke paas ho wahi use hogi):
+  - NUMVERIFY_KEY  : HLR lookup (valid/active, carrier, country, line type)
+  - WHATSAPP_TOKEN : WhatsApp Business number registered hai ya nahi (read-only)
 
 Hosting:
-  1. pip install python-telegram-bot==21.6 requests
-  2. niche BOT_TOKEN ki jagah apna token daaliye (ya env var BOT_TOKEN set kijiye)
+  1. pip install -r requirements.txt
+  2. export BOT_TOKEN="apna-telegram-token"
+     export NUMVERIFY_KEY="apni-numverify-key"      # optional
   3. python app.py
 """
 
@@ -28,9 +35,10 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------
-# CONFIG  — apna bot token yahan daaliye (ya environment variable set kijiye)
+# CONFIG  — tokens/keys yahan ya environment variables se
 # ---------------------------------------------------------------------------
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")   # <-- apna Telegram bot token yahan
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")          # <-- Telegram bot token
+NUMVERIFY_KEY = os.environ.get("NUMVERIFY_KEY", "")  # <-- numverify.com key (optional)
 
 BRAND = "LEGENDCHEATS"
 
@@ -42,70 +50,67 @@ logger = logging.getLogger(BRAND)
 
 
 # ---------------------------------------------------------------------------
-# Number validation
-#   - sirf digits (+ optional leading +)
-#   - 0 se shuru nahi hona chahiye
-#   - country code ke baad total 10 se 15 digits (E.164 standard)
+# Number format validation (E.164)
+#   - 0 se shuru nahi
+#   - country code ke saath, 10-15 digits
 # ---------------------------------------------------------------------------
 def clean_number(raw: str) -> str:
-    """Spaces, dashes, brackets hata do."""
     return re.sub(r"[\s\-\(\)]", "", raw.strip())
 
 
 def validate_number(raw: str):
-    """
-    Return (is_valid: bool, reason: str, normalized: str)
-    """
     num = clean_number(raw)
-
-    # optional leading + allow karo
     core = num[1:] if num.startswith("+") else num
 
     if not core.isdigit():
-        return False, "Sirf digits allowed hain (+ country code ke saath).", num
-
+        return False, "Sirf digits allowed hain (+ country code).", num
     if core.startswith("0"):
         return False, "Number 0 se shuru nahi hona chahiye (country code use kijiye).", num
-
     if len(core) < 10 or len(core) > 15:
         return False, "Number 10 se 15 digits ke beech hona chahiye (E.164).", num
 
-    normalized = "+" + core
-    return True, "OK", normalized
+    return True, "OK", "+" + core
 
 
 # ---------------------------------------------------------------------------
-# LEGIT API lookup  — public number metadata (carrier / country / line type)
-# Yahan sirf info di jaati hai, koi message/call nahi bheja jaata.
+# HLR lookup (read-only) — valid/active, carrier, country, line type
 # ---------------------------------------------------------------------------
-def lookup_number(normalized: str) -> str:
-    """
-    Public, read-only lookup. Agar aapke paas apni API key hai to use kar sakte
-    hain; by default yeh ek basic offline-style summary deta hai.
-    """
+def hlr_lookup(normalized: str) -> str:
+    if not NUMVERIFY_KEY:
+        return "ℹ️ HLR lookup off (NUMVERIFY_KEY set nahi hai). Format valid hai."
     try:
-        # Example of a legit read-only API call (metadata only).
-        # Replace with your own provider + key agar chahiye.
-        api_key = os.environ.get("NUMVERIFY_KEY", "")
-        if api_key:
-            resp = requests.get(
-                "http://apilayer.net/api/validate",
-                params={"access_key": api_key, "number": normalized},
-                timeout=10,
+        resp = requests.get(
+            "http://apilayer.net/api/validate",
+            params={"access_key": NUMVERIFY_KEY, "number": normalized},
+            timeout=10,
+        )
+        data = resp.json()
+        if data.get("valid"):
+            return (
+                f"🟢 Status  : Active / Valid\n"
+                f"📍 Country : {data.get('country_name', '-')} ({data.get('country_code', '-')})\n"
+                f"📶 Carrier : {data.get('carrier') or '-'}\n"
+                f"🔖 Type    : {data.get('line_type') or '-'}"
             )
-            data = resp.json()
-            if data.get("valid"):
-                return (
-                    f"📍 Country : {data.get('country_name', '-')}\n"
-                    f"📞 Carrier : {data.get('carrier') or '-'}\n"
-                    f"🔖 Type    : {data.get('line_type') or '-'}"
-                )
-            return "ℹ️ Lookup ne number ko valid nahi maana."
-        # koi key nahi -> sirf format summary
-        return "ℹ️ Format valid hai. (Detailed lookup ke liye NUMVERIFY_KEY set kijiye.)"
+        return "🔴 Status : Number lookup mein valid nahi nikla."
     except Exception as e:
-        logger.warning("lookup failed: %s", e)
+        logger.warning("hlr lookup failed: %s", e)
         return "⚠️ Lookup service abhi reachable nahi hai."
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp registration check (read-only)
+#   NOTE: WhatsApp par "registered hai ya nahi" check ke liye aapka apna
+#   WhatsApp Business account chahiye. Yahan sirf hook rakha hai — key hogi to
+#   aap apna provider endpoint laga sakte hain. Koi message NAHI jaata.
+# ---------------------------------------------------------------------------
+def whatsapp_check(normalized: str) -> str:
+    token = os.environ.get("WHATSAPP_TOKEN", "")
+    if not token:
+        return ""  # feature off
+    # Yahan apna WhatsApp Business "contacts"/lookup endpoint laga sakte hain.
+    # Jaan-boojh kar message-send ka koi code nahi — sirf registration check.
+    return "💬 WhatsApp : check ke liye apna Business API endpoint configure kijiye."
 
 
 # ---------------------------------------------------------------------------
@@ -116,11 +121,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"╔══════════════════════╗\n"
         f"      ⚡ {BRAND} ⚡\n"
         f"╚══════════════════════╝\n\n"
-        f"👋 Welcome! Ye {BRAND} ka official bot hai.\n\n"
+        f"👋 Welcome! Ye {BRAND} ka official number-lookup bot hai.\n"
+        f"🔍 Read-only testing — koi SMS/call/WhatsApp message nahi bheja jaata.\n\n"
         f"📋 Commands:\n"
-        f"   /number  —  phone number validate + lookup\n"
+        f"   /number  —  number validate + lookup\n"
         f"   /help    —  madad\n\n"
-        f"Shuru karne ke liye bhejiye:  /number 923001234567"
+        f"Example:  /number 923001234567"
     )
     await update.message.reply_text(text)
 
@@ -128,51 +134,46 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"ℹ️ {BRAND} Help\n\n"
-        "Usage:\n"
-        "   /number <phone>\n\n"
+        "Usage:  /number <phone>\n\n"
         "Rules:\n"
         "  • 0 se shuru na ho\n"
-        "  • country code ke saath (jaise 92..., 91..., 1...)\n"
+        "  • country code ke saath (92..., 91..., 1...)\n"
         "  • 10–15 digits\n\n"
+        "Lookup read-only hai: number active/valid, carrier, country, line type.\n"
         "Example:  /number +923001234567"
     )
 
 
+def build_report(normalized: str) -> str:
+    lines = [f"✅ Format valid", f"🔢 Number : {normalized}", "", hlr_lookup(normalized)]
+    wa = whatsapp_check(normalized)
+    if wa:
+        lines.append(wa)
+    lines.append("")
+    lines.append(f"— {BRAND}")
+    return "\n".join(lines)
+
+
 async def number_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text(
-            "📥 Number bhejiye:  /number 923001234567"
-        )
+        await update.message.reply_text("📥 Number bhejiye:  /number 923001234567")
         return
 
     raw = " ".join(context.args)
     is_valid, reason, normalized = validate_number(raw)
-
     if not is_valid:
-        await update.message.reply_text(
-            f"❌ Invalid number\n\nReason: {reason}"
-        )
+        await update.message.reply_text(f"❌ Invalid number\n\nReason: {reason}")
         return
 
-    info = lookup_number(normalized)
-    await update.message.reply_text(
-        f"✅ Valid number\n\n"
-        f"🔢 Number : {normalized}\n"
-        f"{info}\n\n"
-        f"— {BRAND}"
-    )
+    await update.message.reply_text(build_report(normalized))
 
 
 async def plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Agar user bina command ke sirf number bhej de."""
     raw = update.message.text or ""
     if re.search(r"\d{7,}", raw):
         is_valid, reason, normalized = validate_number(raw)
         if is_valid:
-            info = lookup_number(normalized)
-            await update.message.reply_text(
-                f"✅ Valid number\n\n🔢 {normalized}\n{info}\n\n— {BRAND}"
-            )
+            await update.message.reply_text(build_report(normalized))
         else:
             await update.message.reply_text(f"❌ Invalid number\n\nReason: {reason}")
     else:
@@ -189,13 +190,12 @@ def main():
         )
 
     app = Application.builder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("number", number_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text))
 
-    logger.info("%s bot chal raha hai...", BRAND)
+    logger.info("%s lookup bot chal raha hai...", BRAND)
     app.run_polling()
 
 
