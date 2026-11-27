@@ -78,7 +78,7 @@
     <h1>LDC <span>Multi API Caller</span></h1>
     <button class="ghost" id="logoutBtn">Logout</button>
   </div>
-  <p class="sub">Add your Free Fire info APIs, set a count (1–200), and every API gets called that many times.</p>
+  <p class="sub">Add your Free Fire info APIs, set any count (1 or more), and every API gets called that many times.</p>
 
   <!-- STEP 1: add APIs -->
   <div class="card">
@@ -96,8 +96,8 @@
     <h2>2. Count &amp; settings</h2>
     <div class="grid3">
       <div>
-        <label for="count">Count per API (1–200)</label>
-        <input id="count" type="number" min="1" max="200" value="10">
+        <label for="count">Count per API (unlimited)</label>
+        <input id="count" type="number" min="1" value="10">
       </div>
       <div>
         <label for="threads">Parallel requests</label>
@@ -203,7 +203,6 @@
 })();
 
 (() => {
-  const MAX_COUNT = 200;
   const $ = id => document.getElementById(id);
   const apis = [];            // { url, done, ok, err, noCors, el }
   let running = false, stopFlag = false, startedAt = 0, timer = null;
@@ -312,7 +311,6 @@
     if (!apis.length) { alert("Add at least one API first."); return; }
     let count = parseInt($("count").value, 10);
     if (!(count >= 1)) count = 1;
-    if (count > MAX_COUNT) count = MAX_COUNT;
     $("count").value = count;
     const threads = parseInt($("threads").value, 10) || 5;
     const delay = Math.max(0, parseInt($("delay").value, 10) || 0);
@@ -330,12 +328,12 @@
     log(`Started: ${apis.length} API(s) × ${count} = ${totalJobs} calls, ${threads} parallel`);
 
     // job queue: interleave APIs so all of them progress together
-    const queue = [];
-    for (let i = 0; i < count; i++) apis.forEach(a => queue.push(a));
+    // (uses a counter instead of a pre-built list, so huge counts don't use extra memory)
+    let next = 0;
 
     async function worker() {
-      while (queue.length && !stopFlag) {
-        const a = queue.shift();
+      while (next < totalJobs && !stopFlag) {
+        const a = apis[next++ % apis.length];
         const r = await callOnce(a);
         a.done++; doneJobs++;
         if (r.ok) { a.ok++; okJobs++; } else { a.err++; errJobs++; }
