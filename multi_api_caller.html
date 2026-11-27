@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LDC Multi API Caller</title>
+<style>
+  :root {
+    --bg: #0f1117; --card: #181b24; --line: #2a2f3d; --text: #e8eaf0; --muted: #8b91a3;
+    --accent: #ff8a00; --ok: #2ecc71; --err: #ff4d4f; --warn: #f1c40f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; color: var(--accent); }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input, select { width: 100%; background: #0c0e14; color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; font: inherit; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .row > .shrink { flex: 0 0 auto; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 560px) { .grid3 { grid-template-columns: 1fr; } }
+  button { background: var(--accent); color: #111; border: 0; border-radius: 8px; padding: 10px 16px;
+    font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button.danger { background: var(--err); color: #fff; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .api-list { list-style: none; padding: 0; margin: 12px 0 0; }
+  .api-item { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .api-head { display: flex; gap: 8px; align-items: center; }
+  .api-url { flex: 1; font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .api-num { color: var(--accent); font-weight: 700; }
+  .x { background: transparent; color: var(--err); border: 1px solid var(--line); padding: 4px 10px; }
+  .bar { height: 8px; background: #0c0e14; border-radius: 6px; overflow: hidden; margin-top: 8px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .bar.big { height: 16px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+  .pct { font-size: 32px; font-weight: 800; color: var(--accent); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .log { background: #0c0e14; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+    height: 220px; overflow: auto; font: 12px/1.6 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 12px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>LDC <span>Multi API Caller</span></h1>
+  <p class="sub">Add your Free Fire info APIs, set a count (1–200), and every API gets called that many times.</p>
+
+  <!-- STEP 1: add APIs -->
+  <div class="card">
+    <h2>1. Paste API</h2>
+    <div class="row">
+      <input id="apiInput" placeholder="https://your-api.com/info?uid=123456789&region=ind" autocomplete="off">
+      <button class="shrink" id="addBtn">+ Add API</button>
+    </div>
+    <ul class="api-list" id="apiList"></ul>
+    <div class="empty" id="emptyMsg">No APIs added yet.</div>
+  </div>
+
+  <!-- STEP 2: settings -->
+  <div class="card">
+    <h2>2. Count &amp; settings</h2>
+    <div class="grid3">
+      <div>
+        <label for="count">Count per API (1–200)</label>
+        <input id="count" type="number" min="1" max="200" value="10">
+      </div>
+      <div>
+        <label for="threads">Parallel requests</label>
+        <select id="threads">
+          <option>1</option><option>3</option><option selected>5</option><option>10</option><option>20</option>
+        </select>
+      </div>
+      <div>
+        <label for="delay">Delay between calls (ms)</label>
+        <input id="delay" type="number" min="0" max="10000" value="100">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="startBtn">Confirm &amp; Start</button>
+      <button class="danger" id="stopBtn" disabled>Stop</button>
+      <button class="ghost" id="clearLogBtn">Clear log</button>
+    </div>
+    <p class="note">Keep this tab open until it reaches 100%. Closing or locking the phone can pause it.</p>
+  </div>
+
+  <!-- STEP 3: progress -->
+  <div class="card">
+    <h2>3. Progress</h2>
+    <div class="row" style="align-items:flex-end">
+      <div class="pct" id="pct">0%</div>
+      <div class="meta" style="justify-content:flex-end">
+        <span id="done">0 / 0</span>
+        <span class="ok" id="okCount">✔ 0</span>
+        <span class="err" id="errCount">✖ 0</span>
+        <span id="elapsed">0s</span>
+      </div>
+    </div>
+    <div class="bar big"><i id="totalBar"></i></div>
+    <div style="margin-top:14px">
+      <label>Log</label>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const MAX_COUNT = 200;
+  const $ = id => document.getElementById(id);
+  const apis = [];            // { url, done, ok, err, noCors, el }
+  let running = false, stopFlag = false, startedAt = 0, timer = null;
+  let totalJobs = 0, doneJobs = 0, okJobs = 0, errJobs = 0;
+
+  // ---- saved APIs (per-browser convenience only) ----
+  try {
+    const saved = JSON.parse(localStorage.getItem("ldc_apis") || "[]");
+    saved.forEach(u => addApi(u, false));
+  } catch (e) {}
+  function save() {
+    try { localStorage.setItem("ldc_apis", JSON.stringify(apis.map(a => a.url))); } catch (e) {}
+  }
+
+  function log(msg, cls) {
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    const box = $("log");
+    box.appendChild(line);
+    while (box.childNodes.length > 500) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function renderList() {
+    $("emptyMsg").style.display = apis.length ? "none" : "block";
+    apis.forEach((a, i) => { a.el.querySelector(".api-num").textContent = `API ${i + 1}`; });
+  }
+
+  function addApi(raw, persist = true) {
+    let url = (raw || "").trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    try { new URL(url); } catch (e) { alert("Invalid URL"); return; }
+    const li = document.createElement("li");
+    li.className = "api-item";
+    li.innerHTML = `<div class="api-head"><span class="api-num"></span><span class="api-url"></span>
+      <button class="x" title="Remove">✕</button></div>
+      <div class="bar"><i></i></div><div class="meta"><span class="c">0 / 0</span>
+      <span class="ok">✔ 0</span><span class="err">✖ 0</span><span class="last"></span></div>`;
+    li.querySelector(".api-url").textContent = url;
+    const api = { url, done: 0, ok: 0, err: 0, noCors: false, el: li };
+    li.querySelector(".x").onclick = () => {
+      if (running) return;
+      apis.splice(apis.indexOf(api), 1); li.remove(); renderList(); save();
+    };
+    apis.push(api);
+    $("apiList").appendChild(li);
+    renderList();
+    if (persist) save();
+  }
+
+  $("addBtn").onclick = () => { addApi($("apiInput").value); $("apiInput").value = ""; $("apiInput").focus(); };
+  $("apiInput").addEventListener("keydown", e => { if (e.key === "Enter") $("addBtn").click(); });
+  $("clearLogBtn").onclick = () => { $("log").innerHTML = ""; };
+
+  function updateApiUI(a, count, last) {
+    const m = a.el;
+    m.querySelector(".bar > i").style.width = (a.done / count * 100) + "%";
+    m.querySelector(".c").textContent = `${a.done} / ${count}`;
+    m.querySelector(".ok").textContent = `✔ ${a.ok}`;
+    m.querySelector(".err").textContent = `✖ ${a.err}`;
+    if (last) m.querySelector(".last").textContent = last;
+  }
+
+  function updateTotal() {
+    const pct = totalJobs ? Math.floor(doneJobs / totalJobs * 100) : 0;
+    $("pct").textContent = pct + "%";
+    $("totalBar").style.width = pct + "%";
+    $("done").textContent = `${doneJobs} / ${totalJobs}`;
+    $("okCount").textContent = `✔ ${okJobs}`;
+    $("errCount").textContent = `✖ ${errJobs}`;
+    document.title = running ? `${pct}% · LDC Multi API` : "LDC Multi API Caller";
+  }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function callOnce(a) {
+    const t0 = performance.now();
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 20000);
+    const usedNoCors = a.noCors;
+    try {
+      if (usedNoCors) {
+        // Browser can't read the reply (CORS), but the request still reaches the server.
+        await fetch(a.url, { mode: "no-cors", cache: "no-store", signal: ctrl.signal });
+        return { ok: true, info: `sent (${Math.round(performance.now() - t0)}ms)` };
+      }
+      const res = await fetch(a.url, { cache: "no-store", signal: ctrl.signal });
+      const ms = Math.round(performance.now() - t0);
+      return { ok: res.ok, info: `HTTP ${res.status} (${ms}ms)` };
+    } catch (e) {
+      if (e.name === "AbortError") return { ok: false, info: "timeout" };
+      if (!usedNoCors) {
+        // Most likely CORS — switch this API to no-cors so remaining calls still go out.
+        if (!a.noCors) log(`API ${apis.indexOf(a) + 1}: CORS blocked reading the reply, switching to no-cors mode`, "warn");
+        a.noCors = true;
+        return { ok: true, info: "sent (CORS)" };
+      }
+      return { ok: false, info: "network error" };
+    } finally { clearTimeout(to); }
+  }
+
+  $("startBtn").onclick = async () => {
+    if (running) return;
+    if (!apis.length) { alert("Add at least one API first."); return; }
+    let count = parseInt($("count").value, 10);
+    if (!(count >= 1)) count = 1;
+    if (count > MAX_COUNT) count = MAX_COUNT;
+    $("count").value = count;
+    const threads = parseInt($("threads").value, 10) || 5;
+    const delay = Math.max(0, parseInt($("delay").value, 10) || 0);
+
+    if (!confirm(`Call ${apis.length} API(s) × ${count} times = ${apis.length * count} requests?`)) return;
+
+    // reset
+    running = true; stopFlag = false;
+    totalJobs = apis.length * count; doneJobs = okJobs = errJobs = 0;
+    apis.forEach(a => { a.done = a.ok = a.err = 0; a.noCors = false; updateApiUI(a, count, ""); });
+    $("startBtn").disabled = true; $("stopBtn").disabled = false; $("addBtn").disabled = true;
+    startedAt = Date.now();
+    timer = setInterval(() => { $("elapsed").textContent = Math.round((Date.now() - startedAt) / 1000) + "s"; }, 500);
+    updateTotal();
+    log(`Started: ${apis.length} API(s) × ${count} = ${totalJobs} calls, ${threads} parallel`);
+
+    // job queue: interleave APIs so all of them progress together
+    const queue = [];
+    for (let i = 0; i < count; i++) apis.forEach(a => queue.push(a));
+
+    async function worker() {
+      while (queue.length && !stopFlag) {
+        const a = queue.shift();
+        const r = await callOnce(a);
+        a.done++; doneJobs++;
+        if (r.ok) { a.ok++; okJobs++; } else { a.err++; errJobs++; }
+        updateApiUI(a, count, r.info);
+        updateTotal();
+        if (!r.ok) log(`API ${apis.indexOf(a) + 1} #${a.done}: ${r.info}`, "err");
+        if (delay) await sleep(delay);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(threads, totalJobs) }, worker));
+
+    clearInterval(timer);
+    running = false;
+    $("startBtn").disabled = false; $("stopBtn").disabled = true; $("addBtn").disabled = false;
+    updateTotal();
+    const secs = Math.round((Date.now() - startedAt) / 1000);
+    log(stopFlag ? `Stopped at ${doneJobs}/${totalJobs}` : `Finished ✔ ${okJobs} ok, ✖ ${errJobs} failed in ${secs}s`,
+        stopFlag ? "warn" : "ok");
+  };
+
+  $("stopBtn").onclick = () => { stopFlag = true; log("Stopping…", "warn"); };
+  window.addEventListener("beforeunload", e => { if (running) { e.preventDefault(); e.returnValue = ""; } });
+})();
+</script>
+</body>
+</html>

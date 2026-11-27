@@ -400,6 +400,17 @@ async def handle_index(request: web.Request) -> web.Response:
     return web.Response(text=content, content_type="text/html", charset="utf-8")
 
 
+MULTI_API_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "multi_api_caller.html")
+
+
+async def handle_multi_api(request: web.Request) -> web.Response:
+    """Admin panel page: add multiple APIs and call each one N times (1-200)."""
+    if not os.path.exists(MULTI_API_PATH):
+        return web.Response(text="multi_api_caller.html not found", status=404)
+    with open(MULTI_API_PATH, "r", encoding="utf-8") as f:
+        return web.Response(text=f.read(), content_type="text/html", charset="utf-8")
+
+
 async def handle_get_stats(request: web.Request) -> web.Response:
     accounts_data = list(bot_state.accounts.values())
     accounts_data.sort(key=lambda x: x.get("gained_exp", 0), reverse=True)
@@ -712,6 +723,7 @@ async def start_web_dashboard(host: str = "0.0.0.0", port: int = 5000):
     app = web.Application()
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/stats", handle_get_stats)
+    app.router.add_get("/multi-api", handle_multi_api)
     app.router.add_post("/api/account/add", handle_add_account)
     app.router.add_post("/api/account/delete", handle_delete_account)
     app.router.add_post("/api/account/refresh", handle_refresh_account)
