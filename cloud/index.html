@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LDC Cloud API Caller</title>
+<style>
+  :root {
+    --bg: #0f1117; --card: #181b24; --line: #2a2f3d; --text: #e8eaf0; --muted: #8b91a3;
+    --accent: #ff8a00; --ok: #2ecc71; --err: #ff4d4f; --warn: #f1c40f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; color: var(--accent); }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input, select { width: 100%; background: #0c0e14; color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; font: inherit; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .row > .shrink { flex: 0 0 auto; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 560px) { .grid3 { grid-template-columns: 1fr; } }
+  button { background: var(--accent); color: #111; border: 0; border-radius: 8px; padding: 10px 16px;
+    font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button.danger { background: var(--err); color: #fff; padding: 6px 12px; font-size: 13px; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .api-list { list-style: none; padding: 0; margin: 12px 0 0; }
+  .api-item { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+  .url { flex: 1; font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+  .num { color: var(--accent); font-weight: 700; }
+  .x { background: transparent; color: var(--err); border: 1px solid var(--line); padding: 4px 10px; }
+  .bar { height: 8px; background: #0c0e14; border-radius: 6px; overflow: hidden; margin-top: 6px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+  .bar.big { height: 14px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+  .job { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .job-head { display: flex; align-items: center; gap: 10px; }
+  .pct { font-size: 26px; font-weight: 800; color: var(--accent); min-width: 70px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line); }
+  .badge.running { color: var(--warn); border-color: var(--warn); }
+  .badge.finished { color: var(--ok); border-color: var(--ok); }
+  .badge.stopped { color: var(--err); border-color: var(--err); }
+  .sub-api { margin-top: 10px; font-size: 12px; }
+  .sub-api .url { font-size: 11px; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 12px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .status { font-size: 12px; margin-top: 6px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>LDC <span>Cloud API Caller</span></h1>
+  <p class="sub">Calls run on the server. After you press Start you can close this page and check back later.</p>
+
+  <div class="card">
+    <details id="srvBox">
+      <summary>Server settings</summary>
+      <div style="margin-top:10px">
+        <label for="server">Server URL (leave empty if this page is served by the server)</label>
+        <input id="server" placeholder="https://your-app.onrender.com">
+        <label for="key" style="margin-top:10px">Admin key (only if you set ADMIN_KEY)</label>
+        <input id="key" type="password" placeholder="optional">
+        <div class="row" style="margin-top:10px">
+          <button class="ghost shrink" id="saveSrv">Save &amp; connect</button>
+          <div class="status" id="srvStatus"></div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>1. Paste API</h2>
+    <div class="row">
+      <input id="apiInput" placeholder="https://your-api.com/info?uid=123456789&region=ind" autocomplete="off">
+      <button class="shrink" id="addBtn">+ Add API</button>
+    </div>
+    <ul class="api-list" id="apiList"></ul>
+    <div class="empty" id="emptyMsg">No APIs added yet.</div>
+  </div>
+
+  <div class="card">
+    <h2>2. Count &amp; start</h2>
+    <div class="grid3">
+      <div>
+        <label for="count">Count per API (1–200)</label>
+        <input id="count" type="number" min="1" max="200" value="10">
+      </div>
+      <div>
+        <label for="threads">Parallel requests</label>
+        <select id="threads">
+          <option>1</option><option>3</option><option selected>5</option><option>10</option><option>20</option>
+        </select>
+      </div>
+      <div>
+        <label for="delay">Delay between calls (ms)</label>
+        <input id="delay" type="number" min="0" max="10000" value="100">
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="shrink" id="startBtn">Confirm &amp; Start on Cloud</button>
+      <div class="status" id="startStatus"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Cloud jobs (live)</h2>
+    <div id="jobs"><div class="empty">No jobs yet.</div></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  };
+  let apis = store.get("ldc_cloud_apis", []);
+  $("server").value = store.get("ldc_server", "");
+  $("key").value = store.get("ldc_key", "");
+
+  const base = () => ($("server").value.trim() || "").replace(/\/+$/, "");
+  async function api(path, opts = {}) {
+    const headers = { "Content-Type": "application/json" };
+    if ($("key").value) headers["X-Admin-Key"] = $("key").value;
+    const res = await fetch(base() + path, { ...opts, headers, cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // ---- API list ----
+  function renderApis() {
+    $("apiList").innerHTML = apis.map((u, i) =>
+      `<li class="api-item"><span class="num">API ${i + 1}</span><span class="url">${esc(u)}</span>
+       <button class="x" data-i="${i}">✕</button></li>`).join("");
+    $("emptyMsg").style.display = apis.length ? "none" : "block";
+    store.set("ldc_cloud_apis", apis);
+  }
+  $("apiList").onclick = e => {
+    const i = e.target.dataset.i;
+    if (i !== undefined) { apis.splice(+i, 1); renderApis(); }
+  };
+  $("addBtn").onclick = () => {
+    let u = $("apiInput").value.trim();
+    if (!u) return;
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    try { new URL(u); } catch (e) { alert("Invalid URL"); return; }
+    apis.push(u); $("apiInput").value = ""; $("apiInput").focus(); renderApis();
+  };
+  $("apiInput").addEventListener("keydown", e => { if (e.key === "Enter") $("addBtn").click(); });
+  renderApis();
+
+  // ---- server ----
+  async function connect() {
+    store.set("ldc_server", $("server").value.trim());
+    store.set("ldc_key", $("key").value);
+    try {
+      const p = await api("/api/ping");
+      if (p.needs_key && !p.authorized) {
+        $("srvStatus").innerHTML = `<span class="warn">Connected, but admin key is wrong/missing</span>`;
+        $("srvBox").open = true;
+      } else {
+        $("srvStatus").innerHTML = `<span class="ok">Connected ✔</span>`;
+      }
+      refresh();
+    } catch (e) {
+      $("srvStatus").innerHTML = `<span class="err">Can't reach server: ${esc(e.message)}</span>`;
+      $("srvBox").open = true;
+    }
+  }
+  $("saveSrv").onclick = connect;
+
+  // ---- start ----
+  $("startBtn").onclick = async () => {
+    if (!apis.length) { alert("Add at least one API first."); return; }
+    let count = Math.min(200, Math.max(1, parseInt($("count").value, 10) || 1));
+    $("count").value = count;
+    if (!confirm(`Run on cloud: ${apis.length} API(s) × ${count} = ${apis.length * count} calls?`)) return;
+    $("startBtn").disabled = true;
+    try {
+      const job = await api("/api/jobs", { method: "POST", body: JSON.stringify({
+        apis, count, threads: +$("threads").value, delay: +$("delay").value || 0 }) });
+      $("startStatus").innerHTML = `<span class="ok">Job ${job.id} started on cloud ✔ — you can close this page now.</span>`;
+      refresh();
+    } catch (e) {
+      $("startStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    } finally { $("startBtn").disabled = false; }
+  };
+
+  // ---- jobs ----
+  function jobHtml(j) {
+    const subs = j.apis.map((a, i) => `
+      <div class="sub-api">
+        <div class="row"><span class="num shrink">API ${i + 1}</span><span class="url">${esc(a.url)}</span></div>
+        <div class="bar"><i style="width:${a.done / j.count * 100}%"></i></div>
+        <div class="meta"><span>${a.done} / ${j.count}</span><span class="ok">✔ ${a.ok}</span>
+          <span class="err">✖ ${a.err}</span><span>${esc(a.last || "")}</span></div>
+      </div>`).join("");
+    return `<div class="job">
+      <div class="job-head">
+        <div class="pct">${j.percent}%</div>
+        <div style="flex:1">
+          <div class="row" style="gap:8px"><span class="badge ${j.status} shrink">${j.status}</span>
+            <span class="meta" style="margin:0">#${j.id} · ${new Date(j.created * 1000).toLocaleTimeString()} · ${j.elapsed}s</span></div>
+          <div class="meta"><span>${j.done} / ${j.total}</span><span class="ok">✔ ${j.ok}</span><span class="err">✖ ${j.err}</span></div>
+        </div>
+        ${j.status === "running" ? `<button class="danger shrink" data-stop="${j.id}">Stop</button>` : ""}
+      </div>
+      <div class="bar big"><i style="width:${j.percent}%"></i></div>
+      <details ${j.status === "running" ? "open" : ""}><summary style="margin-top:8px">APIs (${j.apis.length})</summary>${subs}</details>
+    </div>`;
+  }
+
+  let timer = null;
+  async function refresh() {
+    clearTimeout(timer);
+    let anyRunning = false;
+    try {
+      const list = await api("/api/jobs");
+      anyRunning = list.some(j => j.status === "running");
+      const openIds = new Set([...document.querySelectorAll("#jobs details[open]")].map(d => d.closest(".job").dataset.id));
+      $("jobs").innerHTML = list.length ? list.map(jobHtml).join("") : `<div class="empty">No jobs yet.</div>`;
+      document.querySelectorAll("#jobs .job").forEach((el, i) => {
+        el.dataset.id = list[i].id;
+        if (openIds.has(list[i].id)) el.querySelector("details").open = true;
+      });
+      const run = list.find(j => j.status === "running");
+      document.title = run ? `${run.percent}% · LDC Cloud` : "LDC Cloud API Caller";
+    } catch (e) { /* server unreachable — shown in settings */ }
+    timer = setTimeout(refresh, anyRunning ? 1000 : 5000);
+  }
+  $("jobs").onclick = async e => {
+    const id = e.target.dataset.stop;
+    if (id) { e.target.disabled = true; try { await api(`/api/jobs/${id}/stop`, { method: "POST" }); } catch (err) {} refresh(); }
+  };
+
+  connect();
+})();
+</script>
+</body>
+</html>
